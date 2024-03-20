@@ -7,6 +7,8 @@ import {
   ImageBackground,
   Image,
   TouchableOpacity,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 
 const Start = ({ navigation }) => {
@@ -40,7 +42,6 @@ const Start = ({ navigation }) => {
             placeholderTextColor="#757083"
           />
         </View>
-
         {/* Background color selection section */}
         <View style={styles.middleContainer}>
           <Text style={styles.chooseColor}>Choose a background color:</Text>
@@ -73,6 +74,7 @@ const Start = ({ navigation }) => {
         >
           <Text style={styles.buttonText}>Start Chatting</Text>
         </TouchableOpacity>
+        {Platform.OS === "ios" && <KeyboardAvoidingView behavior="padding" />}
       </View>
     </ImageBackground>
   );

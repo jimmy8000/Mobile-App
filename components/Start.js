@@ -1,17 +1,24 @@
 import { useState } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  TextInput,
-  ImageBackground,
-  Image,
-  TouchableOpacity,
-  Platform,
-  KeyboardAvoidingView,
-} from "react-native";
+import { Alert, StyleSheet, View, Text, TextInput, ImageBackground, Image, TouchableOpacity, Platform, KeyboardAvoidingView } from "react-native";
+
+import { getAuth, signInAnonymously } from "firebase/auth";
 
 const Start = ({ navigation }) => {
+
+  const auth = getAuth();
+
+  const signInUser = () => {
+    signInAnonymously(auth)
+    .then(result => {
+      navigation.navigate("Chat", {
+        userID: result.user.uid,
+        name: name, 
+        selectedColor: selectedColor,
+      });
+      Alert.alert("Signed in Successfully!");
+    })
+  }
+
   // State hooks for handling user input and selected color
   const [name, setName] = useState("");
   const [selectedColor, setSelectedColor] = useState("");
@@ -63,16 +70,8 @@ const Start = ({ navigation }) => {
         </View>
 
         {/* Button to navigate to Chat screen with selected options */}
-        <TouchableOpacity
-          style={styles.button}
-          onPress={() =>
-            navigation.navigate("Chat", {
-              name: name,
-              selectedColor: selectedColor,
-            })
-          }
-        >
-          <Text style={styles.buttonText}>Start Chatting</Text>
+        <TouchableOpacity style={styles.startButton} onPress={signInUser}>
+          <Text style={styles.startButtonText}>Get started</Text>
         </TouchableOpacity>
         {Platform.OS === "ios" && <KeyboardAvoidingView behavior="padding" />}
       </View>
@@ -148,6 +147,16 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
   },
+  startButton: {
+    backgroundColor: "#000",
+    height: 50,
+    width: "88%",
+    justifyContent: "center",
+    alignItems: "center"
+  },
+  startButtonText: {
+    color: "#FFF",
+  }
 });
 
 export default Start;

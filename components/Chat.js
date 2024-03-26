@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { StyleSheet, View, Platform, KeyboardAvoidingView } from "react-native";
+import { StyleSheet, View, Platform, KeyboardAvoidingView, Text, TouchableOpacity, Alert } from "react-native";
 import { Bubble, GiftedChat, InputToolbar } from "react-native-gifted-chat";
 import {
   collection,
@@ -11,11 +11,13 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import MapView from "react-native-maps";
 import CustomActions from "./CustomActions";
+import { Audio } from "expo-av";
 
 const Chat = ({ db, route, navigation, isConnected, storage }) => {
   const [messages, setMessages] = useState([]);
   const { name, userID } = route.params;
   const {selectedColor} = route.params;
+  let soundObject = null;
 
   let unsubMessages;
 
@@ -106,6 +108,78 @@ const Chat = ({ db, route, navigation, isConnected, storage }) => {
     return null;
   };
 
+  const renderMessageAudio = (props) => {
+    return (
+        <View {...props}>
+            <TouchableOpacity
+                style={{ backgroundColor: "#FF0", borderRadius: 10, margin: 5 }}
+                onPress={async () => {
+                    try {
+                        // Log the URI for debugging
+                        console.log("Playing sound from URI:", props.currentMessage.audio);
+                        
+                        // Stop and unload any currently playing sound first
+                        if (soundObject) {
+                            await soundObject.unloadAsync();
+                            soundObject.setOnPlaybackStatusUpdate(null); // Remove event listener
+                            soundObject = null;
+                        }
+
+                        // Create a new sound object
+                        soundObject = new Audio.Sound();
+                        await soundObject.loadAsync({ uri: props.currentMessage.audio });
+                        soundObject.setOnPlaybackStatusUpdate((status) => {
+                            if (status.didJustFinish && !status.isLooping) {
+                                soundObject.unloadAsync(); // Unload after playing
+                            }
+                        });
+                        await soundObject.playAsync();
+                    } catch (error) {
+                        console.error("Error playing sound:", error);
+                        Alert.alert("Playback Error", "Failed to play sound.");
+                    }
+                }}
+            >
+                <Text style={{ textAlign: "center", color: 'black', padding: 5 }}>
+                    Play Sound
+                </Text>
+            </TouchableOpacity>
+        </View>
+    );
+};
+
+
+  useEffect(() => {
+    navigation.setOptions({ title: name });
+  
+    if (isConnected === true) {
+      if (unsubMessages) unsubMessages();
+      unsubMessages = null;
+  
+      const q = query(collection(db, "messages"), orderBy("createdAt", "desc"));
+      unsubMessages = onSnapshot(q, (docs) => {
+        let newMessages = [];
+        docs.forEach((doc) => {
+          newMessages.push({
+            id: doc.id,
+            ...doc.data(),
+            createdAt: new Date(doc.data().createdAt.toMillis())
+          });
+        });
+        cacheMessages(newMessages);
+        setMessages(newMessages);
+      });
+    } else {
+      loadCachedMessages();
+    }
+  
+    return () => {
+      if (unsubMessages) unsubMessages();
+      if (soundObject) soundObject.unloadAsync();
+    };
+  }, [isConnected]);
+  
+  
   
 
   return (
@@ -117,6 +191,7 @@ const Chat = ({ db, route, navigation, isConnected, storage }) => {
         onSend={(messages) => onSend(messages)}
         renderActions={renderCustomActions}
         renderCustomView={renderCustomView}
+        renderMessageAudio={renderMessageAudio}
         user={{
           _id: userID,
           name,

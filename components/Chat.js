@@ -1,102 +1,142 @@
-import React, { useEffect, useState } from "react";
-import { View, StyleSheet, Platform, KeyboardAvoidingView, Alert } from "react-native";
-import { GiftedChat, Bubble, InputToolbar } from "react-native-gifted-chat";
-import { collection, addDoc, query, orderBy, onSnapshot } from "firebase/firestore";
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useState, useEffect } from "react";
+import { StyleSheet, View, Platform, KeyboardAvoidingView } from "react-native";
+import { Bubble, GiftedChat, InputToolbar } from "react-native-gifted-chat";
+import {
+  collection,
+  addDoc,
+  onSnapshot,
+  query,
+  orderBy,
+} from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import MapView from "react-native-maps";
+import CustomActions from "./CustomActions";
 
-const Chat = ({ route, db, isConnected }) => {
+const Chat = ({ db, route, navigation, isConnected, storage }) => {
   const [messages, setMessages] = useState([]);
+  const { name, userID } = route.params;
+  const {selectedColor} = route.params;
 
-  const { userID, name } = route.params;
+  let unsubMessages;
 
   useEffect(() => {
-    if (isConnected) {
-      const messagesQuery = query(collection(db, "messages"), orderBy("createdAt", "desc"));
+    navigation.setOptions({ title: name });
 
-      const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-        const messagesFirestore = snapshot.docs.map((doc) => {
-          const firebaseData = doc.data();
-          const data = {
-            _id: doc.id,
-            text: '',
-            createdAt: new Date().getTime(),
-            ...firebaseData
-          };
+    if (isConnected === true) {
+      if (unsubMessages) unsubMessages();
+      unsubMessages = null;
 
-          if (firebaseData.createdAt) {
-            data.createdAt = firebaseData.createdAt.toDate();
-          }
-
-          return data;
+      const q = query(collection(db, "messages"), orderBy("createdAt", "desc"));
+      unsubMessages = onSnapshot(q, (docs) => {
+        let newMessages = [];
+        docs.forEach((doc) => {
+          newMessages.push({
+            id: doc.id,
+            ...doc.data(),
+            createdAt: new Date(doc.data().createdAt.toMillis()),
+          });
         });
-
-        setMessages(messagesFirestore);
-        // Cache messages
-        AsyncStorage.setItem('messages', JSON.stringify(messagesFirestore));
+        cacheMessages(newMessages);
+        setMessages(newMessages);
       });
+    } else loadCachedMessages();
 
-      return () => unsubscribe();
-    } else {
-      // Load cached messages if offline
-      AsyncStorage.getItem('messages').then((storedMessages) => {
-        if (storedMessages) setMessages(JSON.parse(storedMessages));
-      }).catch(error => console.log(error));
-    }
+    return () => {
+      if (unsubMessages) unsubMessages();
+    };
   }, [isConnected]);
 
-  const onSend = (newMessages = []) => {
-    if (!isConnected) {
-      Alert.alert("You are offline", "Messages can only be sent when online.");
-      return;
+  const loadCachedMessages = async () => {
+    const cachedMessages = (await AsyncStorage.getItem("messages")) || [];
+    setMessages(JSON.parse(cachedMessages));
+  };
+
+  const cacheMessages = async (messagesToCache) => {
+    try {
+      await AsyncStorage.setItem("messages", JSON.stringify(messagesToCache));
+    } catch (error) {
+      console.log(error.message);
     }
-
-    const message = newMessages[0];
-    if (!message.text.trim()) return;
-
-    addDoc(collection(db, 'messages'), {
-      ...message,
-      createdAt: new Date(),
-    });
   };
 
-  const renderBubble = (props) => (
-    <Bubble
-      {...props}
-      wrapperStyle={{
-        right: { backgroundColor: "#007AFF" },
-        left: { backgroundColor: "#f0f0f0" },
-      }}
-    />
-  );
+  const onSend = (newMessages) => {
+    addDoc(collection(db, "messages"), newMessages[0]);
+  };
 
-  // Custom renderInputToolbar to hide when offline
   const renderInputToolbar = (props) => {
-    if (!isConnected) return null;
-    return <InputToolbar {...props} />;
+    if (isConnected === true) return <InputToolbar {...props} containerStyle={styles.input} />;
+    else return null;
   };
+
+  const renderBubble = (props) => {
+    return (
+      <Bubble
+        {...props}
+        wrapperStyle={{
+          right: {
+            backgroundColor: "#000",
+          },
+          left: {
+            backgroundColor: "#FFF",
+          },
+        }}
+      />
+    );
+  };
+
+  const renderCustomActions = (props) => {
+    return <CustomActions onSend={onSend} storage={storage} {...props} userID={userID} />;
+  };
+
+  const renderCustomView = (props) => {
+    const { currentMessage } = props;
+    if (currentMessage.location) {
+      return (
+        <MapView
+          style={{ width: 150, height: 100, borderRadius: 13, margin: 3 }}
+          region={{
+            latitude: currentMessage.location.latitude,
+            longitude: currentMessage.location.longitude,
+            latitudeDelta: 0.0922,
+            longitudeDelta: 0.0421,
+          }}
+        />
+      );
+    }
+    return null;
+  };
+
+  
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, {backgroundColor: selectedColor}]}>
       <GiftedChat
         messages={messages}
-        onSend={messages => onSend(messages)}
-        user={{
-          _id: userID,
-          name: name,
-        }}
         renderBubble={renderBubble}
         renderInputToolbar={renderInputToolbar}
+        onSend={(messages) => onSend(messages)}
+        renderActions={renderCustomActions}
+        renderCustomView={renderCustomView}
+        user={{
+          _id: userID,
+          name,
+        }}
       />
-      {Platform.OS === 'android' && <KeyboardAvoidingView behavior="height" />}
+
+      {Platform.OS === "android" ? (
+        <KeyboardAvoidingView behavior="height" />
+      ) : null}
     </View>
   );
 };
 
+export default Chat;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
   },
+  input: {
+    paddingBottom: 5,
+  }
 });
-
-export default Chat;
